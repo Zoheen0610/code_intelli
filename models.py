@@ -28,6 +28,14 @@ class FileInfo:
     symbols: list[Symbol] = field(default_factory=list)
     error: str | None = None
 
+@dataclass
+class Finding:
+    """One problem an analyzer found, with where it is and how serious it is."""
+    rule: str        # short id, e.g. "missing-docstring"
+    severity: str    # "low" | "medium" | "high"
+    file: str
+    line: int
+    message: str     # e.g. "Function 'find_files' has no docstring"
 
 class SymbolVisitor(ast.NodeVisitor):
     """Walks an AST in code order and collects a Symbol for each class and function.
