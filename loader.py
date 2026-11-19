@@ -22,7 +22,7 @@ def find_files(root: str) -> list[Path]:
 def parse_python(path: Path) -> FileInfo:
     """Parse one file into a FileInfo. Never raises on a bad file: sets `error` instead."""
     try:
-        source = path.read_text(encoding="utf-8", errors="ignore")
+        source = path.read_text(encoding="utf-8-sig", errors="ignore")
     except OSError as e:
         return FileInfo(path=str(path), language="python", source="", error=str(e))
     try:

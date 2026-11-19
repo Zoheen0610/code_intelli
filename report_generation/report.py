@@ -1,10 +1,48 @@
 """Turn findings into a Markdown report."""
 from pathlib import Path
-
+from graph.dependency_graph import Hotspot
 from models import FileInfo, Finding
 
 # Most serious first: that's what a reader looks for.
 SEVERITY_ORDER = ["high", "medium", "low"]
+
+def _hotspot_section(hotspots: list[Hotspot], root: str | None) -> list[str]:
+    """Table of the riskiest files to change."""
+    lines = [
+        "",
+        "## Hotspots",
+        "",
+        "Files that are both complex and depended on. Change these carefully.",
+        "",
+        "| File | Score | Fan-in | Fan-out | Complexity |",
+        "|---|---|---|---|---|",
+    ]
+    
+    for h in hotspots:
+        lines.append(f"| {_cell(_relative(h.path, root))} | {h.score} | {h.fan_in} | {h.fan_out} | {h.complexity} |")
+    return lines
+
+
+def _cycles_section(cycles: list[list[str]], root: str | None) -> list[str]:
+    """List every import loop, e.g. `a.py` → `b.py` → `a.py`."""
+   
+    if not cycles:
+        return []
+
+    lines = [
+        "",
+        f"## Import cycles ({len(cycles)})",
+        "",
+    ]
+    
+    for cycle in cycles:
+        loop = cycle + [cycle[0]]                                # close it: a, b, a
+        names = [f"`{_relative(p, root)}`" for p in loop]        # new list, nothing mutated
+        lines.append("- " + " → ".join(names))                   # bullet = its own line
+
+
+    return lines
+
 
 
 def _relative(path: str, root: str | None) -> str:
@@ -42,7 +80,7 @@ def _severity_section(severity: str, group: list[Finding], root: str | None) -> 
     return lines
 
 
-def render_report(findings: list[Finding], files: list[FileInfo], root: str | None = None) -> str:
+def render_report(findings: list[Finding], files: list[FileInfo],  root: str | None = None, hotspots: list[Hotspot] | None = None, cycles: list[list[str]] | None = None) -> str:
     """Build the whole report as one Markdown string.
 
     `root` is the scanned folder; when given, file paths are shown relative to it.
@@ -61,6 +99,10 @@ def render_report(findings: list[Finding], files: list[FileInfo], root: str | No
         )
         if group:
             lines += _severity_section(severity, group, root)
+    if hotspots:
+        lines += _hotspot_section(hotspots, root)
+    if cycles:
+        lines += _cycles_section(cycles, root)
 
     # Files we couldn't read or parse: the reader should know they weren't checked.
     broken = [info for info in files if info.error]

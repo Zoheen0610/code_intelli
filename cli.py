@@ -18,7 +18,7 @@ from analyzers.security_analyzer import security_analyzer
 from loader import find_files, parse_python
 from models import FileInfo, Finding
 from report_generation.report import SEVERITY_ORDER, render_report
-
+from graph.dependency_graph import build_graph, find_hotspots, find_cycles
 # Functions are values in Python, so analyzers can live in a list.
 # Adding a fourth analyzer = adding one entry here.
 ANALYZERS = [docs_analyzer, complexity_analyzer, security_analyzer]
@@ -52,7 +52,12 @@ def analyze(path: str, output: str, fail_on: str | None) -> int:
         return 2
 
     files, findings = run_analysis(path)
-    report = render_report(findings, files, root=path)
+    
+    graph = build_graph(files, path)
+    hotspots = find_hotspots(graph, files)
+    cycles = find_cycles(graph)
+
+    report = render_report(findings, files,  root=path, hotspots=hotspots, cycles=cycles)
     Path(output).write_text(report, encoding="utf-8")
 
     # A short summary on screen, so the user knows it worked and where to look.
