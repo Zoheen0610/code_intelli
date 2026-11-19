@@ -1,5 +1,4 @@
 """Analyzers turn extracted symbols into findings."""
-from dataclasses import dataclass
 from models import FileInfo, Finding, Symbol
 
 
