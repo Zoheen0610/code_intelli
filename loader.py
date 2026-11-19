@@ -36,6 +36,9 @@ def parse_python(path: Path) -> FileInfo:
     visitor.visit(tree)
 
     info.symbols = visitor.symbols
+    info.imports = visitor.imports
+    info.calls = visitor.calls
+    info.assignments = visitor.assignments
     # The visitor already goes in code order; sorting keeps the output stable anyway.
     info.symbols.sort(key=lambda s: (s.line_start, s.name))
     return info
