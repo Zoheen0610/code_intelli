@@ -18,19 +18,26 @@ class LLMBusyError(LLMError):
     """The server is overloaded or rate-limited: retrying later may work."""
 
 
-def ask_llm(prompt: str) -> str:
-    """Send one prompt, return the reply text. Raises LLMError if anything goes wrong."""
+def ask_llm(prompt: str, schema: dict | None = None) -> str:
+    """Send one prompt, return the reply text. With a schema, the reply is JSON in exactly that shape. Raises LLMError if anything goes wrong."""
     
     try:
         client = genai.Client()
     except ValueError as e:
         raise LLMConfigError("No Gemini API key: set GEMINI_API_KEY in your .env file") from e
 
+    if schema:
+        config = {"response_mime_type": "application/json", "response_json_schema": schema}
+    else:
+        config = None
+
     try:
         response = client.models.generate_content(
             model=MODEL,
-            contents=prompt
+            contents=prompt,
+            config=config,   
         )
+
     except errors.ServerError as e:
         raise LLMBusyError(f"Gemini is busy ({e.code}), try again later") from e
 
