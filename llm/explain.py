@@ -3,16 +3,26 @@ from models import FileInfo, Finding, Symbol
 from analyzers.security_analyzer import SECRET_NAME
 import json
 from dataclasses import dataclass
-
-from llm.gemini import LLMError
+from llm.gemini import LLMError, LLMConfigError
+from report_generation.report import SEVERITY_ORDER
 
 CONTEXT_LINES = 5   # lines above and below a finding that isn't inside any function
+EXPLAIN_SEVERITIES = {"high", "medium"}
+MAX_EXPLANATIONS = 10   # each one is a request on the free tier
 
 @dataclass
 class Explanation:
     """What the LLM says about one finding."""
     explanation: str
     fix: str
+
+@dataclass
+class ExplainedFinding:
+    """One finding plus what the LLM said, or why it couldn't say anything."""
+    finding: Finding
+    explanation: Explanation | None = None   # set when it worked
+    error: str | None = None                 # set when it was skipped
+
 
 EXPLANATION_SCHEMA = {
     "type": "object",                       # the reply is a {...}
@@ -116,3 +126,31 @@ def parse_reply(text: str) -> Explanation:
         raise LLMError("reply was JSON but fix is missing")
 
     return Explanation(explanation=data['explanation'], fix=data['fix'])
+
+def explain_findings(findings: list[Finding], files: list[FileInfo], ask) -> list[ExplainedFinding]:
+    """Ask the LLM about the most serious findings.
+
+    Busy or bad replies are recorded and skipped. LLMConfigError is NOT caught: it stops the run.
+    """
+
+    lookup = {}
+    for file_ in files:
+        lookup[file_.path] = file_
+
+    severe_findings = [f for f in findings if f.severity in EXPLAIN_SEVERITIES ]
+    severe_findings = sorted(severe_findings, key=lambda f: SEVERITY_ORDER.index(f.severity))[:MAX_EXPLANATIONS]
+   
+    results = []
+    for i, finding in enumerate(severe_findings, start=1):
+        print(f"explaining {i}/{len(severe_findings)}: {finding.rule} at line {finding.line}")
+        try:
+            info = lookup[finding.file]
+            prompt = build_prompt(finding, info)
+            text = ask(prompt, schema = EXPLANATION_SCHEMA)
+            results.append(ExplainedFinding(finding, explanation=parse_reply(text)))
+        except LLMConfigError: 
+            raise
+        except LLMError as e: 
+            results.append(ExplainedFinding(finding, error=str(e)))
+
+    return results
