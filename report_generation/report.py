@@ -1,10 +1,52 @@
 """Turn findings into a Markdown report."""
+import ast
+import inspect
 from pathlib import Path
-from graph.dependency_graph import Hotspot
-from models import FileInfo, Finding
 
-# Most serious first: that's what a reader looks for.
-SEVERITY_ORDER = ["high", "medium", "low"]
+from graph.dependency_graph import Hotspot
+from llm.explain import ExplainedFinding
+from models import FileInfo, Finding, SEVERITY_ORDER
+
+
+def _is_python(text: str) -> bool:
+    """True if text parses as Python code."""
+    try:
+        ast.parse(text)
+        return True
+    except SyntaxError:   # also catches IndentationError, a subclass
+        return False
+
+
+def _explanations_section(explained: list[ExplainedFinding], root: str | None) -> list[str]:
+    """Why each serious finding matters, and a suggested fix (written by an LLM)."""
+    lines = [
+        "",
+        f"## Explanations ({len(explained)})",
+        "",
+        "_Written by an LLM: check before applying._",
+    ]
+    for item in explained:
+        f = item.finding
+        lines.append("")
+        lines.append(f"### `{f.rule}` in {_relative(f.file, root)}:{f.line}")
+
+        if item.explanation:
+            lines.append(f"**Why:** {item.explanation.explanation}")
+            lines.append("")
+            lines.append("**Fix:**")
+            lines.append("")
+            # Models often copy indented lines from inside a function; remove the shared indent.
+            fix = inspect.cleandoc(item.explanation.fix)
+            if _is_python(fix):
+                lines.append("```python")
+                lines.append(fix)
+                lines.append("```")
+            else:
+                lines.append(fix)   # prose: don't label it as code
+        else:
+            lines.append(f"Skipped: {item.error}")
+    return lines
+
 
 def _hotspot_section(hotspots: list[Hotspot], root: str | None) -> list[str]:
     """Table of the riskiest files to change."""
@@ -80,7 +122,7 @@ def _severity_section(severity: str, group: list[Finding], root: str | None) -> 
     return lines
 
 
-def render_report(findings: list[Finding], files: list[FileInfo],  root: str | None = None, hotspots: list[Hotspot] | None = None, cycles: list[list[str]] | None = None) -> str:
+def render_report(findings: list[Finding], files: list[FileInfo],  root: str | None = None, hotspots: list[Hotspot] | None = None, cycles: list[list[str]] | None = None, explanations: list[ExplainedFinding] | None = None) -> str:
     """Build the whole report as one Markdown string.
 
     `root` is the scanned folder; when given, file paths are shown relative to it.
@@ -103,6 +145,8 @@ def render_report(findings: list[Finding], files: list[FileInfo],  root: str | N
         lines += _hotspot_section(hotspots, root)
     if cycles:
         lines += _cycles_section(cycles, root)
+    if explanations:
+        lines += _explanations_section(explanations, root)
 
     # Files we couldn't read or parse: the reader should know they weren't checked.
     broken = [info for info in files if info.error]

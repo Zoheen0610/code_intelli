@@ -16,9 +16,10 @@ from analyzers.complexity_analyzer import complexity_analyzer
 from analyzers.docstring_analyzer import docs_analyzer
 from analyzers.security_analyzer import security_analyzer
 from loader import find_files, parse_python
-from models import FileInfo, Finding
-from report_generation.report import SEVERITY_ORDER, render_report
-from graph.dependency_graph import build_graph, find_hotspots, find_cycles
+from graph.dependency_graph import build_graph, find_cycles, find_hotspots
+from models import SEVERITY_ORDER, FileInfo, Finding
+from report_generation.report import render_report
+
 # Functions are values in Python, so analyzers can live in a list.
 # Adding a fourth analyzer = adding one entry here.
 ANALYZERS = [docs_analyzer, complexity_analyzer, security_analyzer]
@@ -45,19 +46,30 @@ def should_fail(findings: list[Finding], fail_on: str | None) -> bool:
     return any(f.severity in blocking for f in findings)
 
 
-def analyze(path: str, output: str, fail_on: str | None) -> int:
+def analyze(path: str, output: str, fail_on: str | None, explain: bool = False) -> int:
     """Run the `analyze` command. Returns the exit code."""
     if not Path(path).is_dir():
         print(f"error: '{path}' is not a folder", file=sys.stderr)
         return 2
 
     files, findings = run_analysis(path)
-    
+
+    explained = []
+    if explain:
+        from llm.gemini import ask_llm, LLMConfigError
+        from llm.explain import explain_findings
+
+        try:
+            explained = explain_findings(findings, files, ask_llm)
+        except LLMConfigError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
     graph = build_graph(files, path)
     hotspots = find_hotspots(graph, files)
     cycles = find_cycles(graph)
 
-    report = render_report(findings, files,  root=path, hotspots=hotspots, cycles=cycles)
+    report = render_report(findings, files,  root=path, hotspots=hotspots, cycles=cycles, explanations=explained)
     Path(output).write_text(report, encoding="utf-8")
 
     # A short summary on screen, so the user knows it worked and where to look.
@@ -80,10 +92,12 @@ def main() -> int:
     a.add_argument("-o", "--output", default="report.md", help="where to write the report (default: report.md)")
     a.add_argument("--fail-on", choices=SEVERITY_ORDER, default=None,
                    help="exit with code 1 if any finding is at or above this severity (for CI)")
+    a.add_argument("--explain", action="store_true", default=False,
+                   help="ask Gemini to explain high and medium findings (needs GEMINI_API_KEY)")
 
     args = parser.parse_args()
     if args.command == "analyze":
-        return analyze(args.path, args.output, args.fail_on)
+        return analyze(args.path, args.output, args.fail_on, args.explain)
     return 2
 
 

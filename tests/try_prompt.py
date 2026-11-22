@@ -13,7 +13,7 @@ for f in security_analyzer(info)[:1]:
     print(text)
     result =  parse_reply(text)
     print(result)
-    print("""LAZY ANSWER""")
-    prompt_lazy = f"An issue is found the info related to which is : {f.message}, suggest fixes"
-    response_lazy =ask_llm(prompt_lazy)
-    print(response_lazy)
+    # print("""LAZY ANSWER""")
+    # prompt_lazy = f"An issue is found the info related to which is : {f.message}, suggest fixes"
+    # response_lazy =ask_llm(prompt_lazy)
+    # print(response_lazy)

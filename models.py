@@ -64,6 +64,7 @@ class Finding:
     line: int
     message: str     # e.g. "Function 'find_files' has no docstring"
 
+SEVERITY_ORDER = ["high", "medium", "low"]
 # Nodes where code can take a different path. Each one adds 1 to complexity.
 # `elif` needs no entry: Python stores it as an If nested in the else branch.
 # `with` is not here: its body always runs, so it adds no new path.
